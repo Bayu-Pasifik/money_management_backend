@@ -14,43 +14,47 @@ Bagian di bawah ini dibagi dua: **langkah khusus IDWebhost** (baca ini kalau itu
 
 ---
 
-## Deploy ke IDWebhost (cPanel)
+## Deploy ke IDWebhost (cPanel + Terminal)
 
-IDWebhost pakai cPanel, jadi Laravel di-deploy lewat File Manager + phpMyAdmin, bukan `git push` biasa.
+Paket kamu ada akses **Terminal** di cPanel, jadi alurnya bisa `git clone` + `composer` + `artisan` langsung di server — jauh lebih simpel daripada zip-upload manual.
 
-### A. Siapkan project sebelum upload (di laptop)
-
-Karena kebanyakan paket shared hosting tidak punya Composer/SSH, install dependency **di laptop dulu**, baru upload hasilnya:
-
-```bash
-cd money-management-backend
-composer install --optimize-autoloader --no-dev
-```
-
-Ini bikin folder `vendor/` terisi — folder ini yang biasanya tidak ada kalau cuma `git clone` di server.
-
-Generate `APP_KEY` juga di laptop (supaya tidak perlu terminal di server):
-
-```bash
-php artisan key:generate --show
-```
-
-Simpan output-nya (`base64:xxxxx...`), nanti dipakai di `.env` server.
-
-### B. Buat subdomain untuk API
+### A. Buat subdomain untuk API
 
 1. Login cPanel IDWebhost (lewat member area IDWebhost → cPanel, atau `namadomain.com/cpanel`).
 2. Buka **Domains** → **Subdomains** (atau **Create A New Domain**).
 3. Buat subdomain, misal `api` untuk `api.namadomain.com`.
-4. Pas isi **Document Root**, jangan biarkan default — ketik manual: `api_backend/public`
-   (cPanel otomatis bikin folder `api_backend` di home directory, dengan document root menunjuk ke `api_backend/public`).
+4. Pas isi **Document Root**, ketik manual: `api_backend/public`
+   (cPanel otomatis bikin folder `api_backend` di home directory, document root menunjuk ke `api_backend/public`).
 
-### C. Upload project
+### B. Buka Terminal & cek tool yang tersedia
 
-1. Zip seluruh folder `money-management-backend` **di laptop** (boleh exclude folder `.git` biar lebih kecil).
-2. cPanel → **File Manager** → masuk ke folder `api_backend` (yang dibuat di langkah B).
-3. Upload file zip, lalu klik kanan → **Extract**.
-4. Pastikan struktur akhirnya: `api_backend/app`, `api_backend/public`, `api_backend/vendor`, dst — **bukan** `api_backend/money-management-backend/app` (kalau ke-nest, pindahkan isinya naik satu level).
+cPanel → cari ikon **Terminal** → buka. Cek dulu apa yang sudah ada:
+
+```bash
+php -v
+git --version
+composer --version
+```
+
+- Kalau `composer --version` gagal (command not found), download Composer sendiri (sekali saja, taruh di home directory):
+
+  ```bash
+  cd ~
+  curl -sS https://getcomposer.org/installer | php
+  # dipakai sebagai: php composer.phar install (ganti "composer" jadi "php composer.phar" di step berikutnya)
+  ```
+
+### C. Clone & install project
+
+```bash
+cd ~
+rm -rf api_backend      # hapus folder kosong bikinan cPanel di step A kalau masih ada isinya default
+git clone https://github.com/Bayu-Pasifik/money_management_backend.git api_backend
+cd api_backend
+composer install --optimize-autoloader --no-dev
+```
+
+(Ganti `composer install` jadi `php composer.phar install` kalau tadi pakai Composer versi manual.)
 
 ### D. Buat database MySQL
 
@@ -58,18 +62,22 @@ Simpan output-nya (`base64:xxxxx...`), nanti dipakai di `.env` server.
 2. Bagian **Create New Database**: isi nama, misal `money_management` → jadi `cpanelusername_money_management`.
 3. Bagian **MySQL Users**: buat user baru + password kuat → jadi `cpanelusername_dbuser`.
 4. Bagian **Add User To Database**: pilih user & database tadi, centang **ALL PRIVILEGES**.
-5. Catat 3 hal ini: nama database lengkap, username lengkap, password.
+5. Catat nama database lengkap, username lengkap, dan password — dipakai di langkah E.
 
-### E. Buat file `.env`
+### E. Konfigurasi `.env` & generate key
 
-1. File Manager → masuk ke `api_backend` (root project, **bukan** `public/`).
-2. Buat file baru bernama `.env` (kalau File Manager sembunyikan file berawalan titik, aktifkan **Settings → Show Hidden Files**).
-3. Isi seperti ini (paste `APP_KEY` dari langkah A):
+Masih di Terminal, di dalam folder `api_backend`:
+
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Lalu edit `.env` (pakai `nano .env` di Terminal, atau lewat File Manager kalau lebih nyaman klik-klik):
 
 ```env
 APP_NAME="Money Management API"
 APP_ENV=production
-APP_KEY=base64:xxxxx-paste-dari-laptop
 APP_DEBUG=false
 APP_URL=https://api.namadomain.com
 
@@ -84,55 +92,49 @@ GEMINI_API_KEY=<key dari aistudio.google.com>
 GEMINI_MODEL=gemini-2.0-flash
 
 TELEGRAM_BOT_TOKEN=<token dari @BotFather>
-TELEGRAM_WEBHOOK_SECRET=<string acak>
+TELEGRAM_WEBHOOK_SECRET=<string acak, misal hasil `openssl rand -hex 20`>
 ```
+
+(`nano`: setelah edit, `Ctrl+O` lalu `Enter` untuk save, `Ctrl+X` untuk keluar.)
 
 ### F. Set versi PHP
 
-cPanel → **Select PHP Version** (atau **MultiPHP Manager**) → pilih **PHP 8.2** atau lebih baru untuk domain `api.namadomain.com`. Pastikan extension berikut aktif (biasanya sudah default, tinggal dicentang kalau belum): `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `fileinfo`.
+cPanel → **Select PHP Version** (atau **MultiPHP Manager**) → pilih **PHP 8.2** atau lebih baru untuk domain `api.namadomain.com`. Pastikan extension berikut aktif: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `fileinfo`.
 
-### G. Jalankan migrasi database
-
-**Kalau paket kamu ada akses Terminal** (cPanel → cari ikon **Terminal**, beberapa paket IDWebhost menyediakan ini):
+### G. Migrasi & optimasi
 
 ```bash
-cd api_backend
 php artisan migrate --force
 php artisan config:cache
+php artisan route:cache
 ```
-
-**Kalau tidak ada Terminal**, pakai cara berikut (aman, sekali pakai lalu dihapus):
-
-1. Di laptop, buat file `public/deploy-migrate.php` di dalam project dengan isi:
-
-   ```php
-   <?php
-   if (($_GET['token'] ?? '') !== 'GANTI-DENGAN-STRING-RAHASIA-ACAK') {
-       http_response_code(403);
-       exit('Forbidden');
-   }
-   require __DIR__.'/../vendor/autoload.php';
-   $app = require_once __DIR__.'/../bootstrap/app.php';
-   $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-   $kernel->call('migrate', ['--force' => true]);
-   echo $kernel->output();
-   ```
-
-2. Upload file ini ke `api_backend/public/deploy-migrate.php` lewat File Manager.
-3. Buka `https://api.namadomain.com/deploy-migrate.php?token=GANTI-DENGAN-STRING-RAHASIA-ACAK` di browser sekali saja.
-4. Kalau outputnya menunjukkan migrasi sukses, **langsung hapus file `deploy-migrate.php` dari server** (File Manager) — jangan dibiarkan nyangkut, karena ini pintu belakang ke database.
 
 ### H. Aktifkan SSL
 
-cPanel → **SSL/TLS Status** → centang domain & subdomain → **Run AutoSSL**. Tunggu beberapa menit sampai statusnya hijau (IDWebhost pakai AutoSSL/Let's Encrypt gratis).
+cPanel → **SSL/TLS Status** → centang domain & subdomain → **Run AutoSSL**. Tunggu beberapa menit sampai statusnya hijau.
 
 ### I. Sambungkan webhook Telegram
 
-Sama seperti host lain, lihat bagian [Hubungkan bot Telegram](#7-hubungkan-bot-telegram) di bawah — tinggal ganti URL ke `https://api.namadomain.com/api/telegram/webhook`.
+Masih di Terminal (atau dari laptop, sama saja):
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -d "url=https://api.namadomain.com/api/telegram/webhook" \
+  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+```
 
 ### J. Update kode di kemudian hari
 
-Tanpa Terminal, alurnya: edit/build ulang di laptop → zip ulang folder yang berubah → upload & extract via File Manager (timpa file lama) → kalau ada migration baru, ulangi trik `deploy-migrate.php` di langkah G lalu hapus lagi setelah selesai.
+Karena sudah `git clone`, update tinggal seperti biasa lewat Terminal:
+
+```bash
+cd ~/api_backend
+git pull origin main
+composer install --optimize-autoloader --no-dev
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+```
 
 ---
 
