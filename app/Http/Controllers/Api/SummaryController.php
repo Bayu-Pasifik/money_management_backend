@@ -34,12 +34,18 @@ class SummaryController extends Controller
                     ->where('occurred_at', '>=', $startOfMonth)
                     ->sum('amount');
 
+                $received = Transaction::where('category_id', $category->id)
+                    ->where('type', 'income')
+                    ->where('occurred_at', '>=', $startOfMonth)
+                    ->sum('amount');
+
                 return [
                     'id' => $category->id,
                     'name' => $category->name,
                     'type' => $category->type,
                     'monthly_budget' => $category->monthly_budget,
                     'spent' => $spent,
+                    'amount' => $category->type === 'income' ? $received : $spent,
                     'remaining' => $category->monthly_budget !== null
                         ? $category->monthly_budget - $spent
                         : null,
