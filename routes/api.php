@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\SummaryController;
 use App\Http\Controllers\Api\TransactionController;
+use App\Http\Controllers\Api\TrendController;
 use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,4 +23,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('transactions', TransactionController::class);
     Route::get('/summary', SummaryController::class);
+    Route::get('/trend', TrendController::class);
 });
